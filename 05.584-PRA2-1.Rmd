@@ -1,0 +1,588 @@
+---
+title: 'Mineria de dades: PRA2 - Projecte de mineria de dades'
+author: "Autor: Maggi Dicheva Baeva"
+date: "Juny 2024"
+output:
+  html_document:
+    highlight: default
+    number_sections: yes
+    theme: cosmo
+    toc: yes
+    toc_depth: 2
+    includes:
+      in_header: 05.584-PAC-header.html
+  word_document: default
+  pdf_document:
+    highlight: zenburn
+    toc: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+El dataset amb el que vaig treballar a la Pràctica 1 no tenia prou variables com per poder realitzar la Pràctica 2. Per això, en aquesta ocasió he escollit el joc de dades *Breast Cancer Dataset* de Kaggle (https://www.kaggle.com/datasets/reihanenamdari/breast-cancer/data). L'anàlisi exploratòria l'he realitzat seguint els mateixos passos que a la meva pràctica 1, ja que estaven bé.
+
+El càncer de mama és una de les malalties més prevalents en la salut de les dones. La disponibilitat de dades exhaustives i detallades sobre pacients afectats per aquesta condició ofereix una oportunitat única per aplicar tècniques avançades de mineria de dades per comprendre millor els factors predictors de supervivència i la progressió de la malaltia. La informació que es dona sobre el dataset a Kaggle és la següent:
+
+Aquest conjunt de dades de pacients amb càncer de mama es va obtenir de l'actualització de novembre de 2017 del Programa SEER del NCI, que proporciona informació sobre estadístiques de càncer basades en la població. El conjunt de dades implicava pacients femenines amb carcinoma ductal infiltrant i carcinoma lobular de mama (codi de histologia SEER primary cites recode NOS 8522/3) diagnosticades entre 2006 i 2010. Es van excloure pacients amb mida de tumor desconeguda, ganglis limfàtics regionals examinats, ganglis limfàtics regionals positius, i pacients amb una supervivència inferior a 1 mes; així, finalment es van incloure 4024 pacients.
+
+El meu estudi se centra en l'anàlisi del conjunt de dades del càncer de mama. Mitjançant l'aplicació de models supervisats i no supervisats, es pretenen identificar correlacions significatives entre les variables demogràfiques, les característiques del tumor, i els resultats de supervivència de les pacients. M'he ajudat molt de l'exemple que se'ns va donar per fer la PAC3, així com de la seva solució.
+
+Comencem important les dades:
+
+```{r}
+breast_cancer_data <- read.csv('Breast_Cancer.csv')
+# Visualitzem els primers registres 
+head(breast_cancer_data)
+```
+
+
+```{r}
+# Obtenim un resum estadístic del conjunt
+summary(breast_cancer_data)
+```
+
+```{r}
+# Obtenim la dimensió del dataframe
+dim(breast_cancer_data)
+```
+
+```{r}
+# Veiem l'estructura de les dades
+str(breast_cancer_data)
+```
+
+Veiem que compleix amb els requisits de la pràctica: 5 variables numèriques, 2 categòriques i 1 binària. El joc de dades conté **4024 observacions i 16 variables** que es descriuen a continuació:
+
+- **Age**: edat de la pacient en el moment del diagnòstic
+- *Race**: raça de la pacient
+- **Marital status**: estat civil en el moment del diagnòstic
+- **T Stage**: estadi T
+- **N Stage**: estadi N
+- **6th Stage**: estadi 6é
+- **Differentiate**: diferenciació
+- **Grade**: grau de diferenciació
+- **A Stage**: estadi A
+- **Tumor size**: mida del tumor
+- **Estrogen status**: estat dels estrògens (2 valors: positiu / negatiu)
+- **Progesterone status**: estat de la progesterona (2 valors: positiu / negatiu)
+- **Regional Nodes Examined**: ganglis regionals examinats
+- **Survival months**: mesos de supervivència
+- **Status**: estat vital (2 valors: viva / morta)
+
+
+```{r}
+# Mostrem la suma dels valors NA de cada variable
+colSums(is.na(breast_cancer_data))
+```
+
+```{r}
+# Mostrem la suma dels valors buits de cada variable
+colSums(breast_cancer_data == "")
+```
+
+En aquest cas, no ens apareixen valors buits ni nuls. Tot i així, a la PAC anterior vaig aprendre que potser hi ha valors *unknown* que val la pena comprovar:
+
+```{r}
+# Detecció de valors unknown
+colSums(breast_cancer_data == "unknown")
+colSums(breast_cancer_data == "Unknown")
+```
+
+No ens ha aparegut cap, pel que no realitzem cap acció.
+
+Procedim a visualitzar les dades per tenir una idea millor de com són.
+
+```{r}
+# Els paquets necessaris
+if(!require(ggplot2)){
+    install.packages('ggplot2', repos='http://cran.us.r-project.org')
+    library(ggplot2)
+}
+if(!require(ggpubr)){
+    install.packages('ggpubr', repos='http://cran.us.r-project.org')
+    library(ggpubr)
+}
+if(!require(grid)){
+    install.packages('grid', repos='http://cran.us.r-project.org')
+    library(grid)
+}
+if(!require(gridExtra)){
+    install.packages('gridExtra', repos='http://cran.us.r-project.org')
+    library(gridExtra)
+}
+if(!require(C50)){
+    install.packages('C50', repos='http://cran.us.r-project.org')
+    library(C50)
+}
+```
+
+
+```{r}
+# Visualitzem les variables categòriques
+grid.newpage()
+
+plotbyRace <- ggplot(breast_cancer_data, aes(Race))+geom_bar(color="black", fill="darkblue", alpha=0.4) +labs(x="Race", y="Frequency")+ guides(fill=guide_legend(title=""))+ ggtitle("Rate")
+
+plotbyMaritalStatus <- ggplot(breast_cancer_data, aes(Marital.Status))+geom_bar(color="black", fill="darkblue", alpha=0.4) +labs(x="Marital Status", y="Frequency")+ guides(fill=guide_legend(title=""))+ ggtitle("Marital Status")
+
+plotbyTStage <- ggplot(breast_cancer_data, aes(T.Stage))+geom_bar(color="black", fill="darkblue", alpha=0.4) +labs(x="T Stage", y="Frequency")+ guides(fill=guide_legend(title=""))+ ggtitle("T Stage")
+
+plotbyNStage <- ggplot(breast_cancer_data, aes(N.Stage))+geom_bar(color="black", fill="darkblue", alpha=0.4) +labs(x="N Stage", y="Frequency")+ guides(fill=guide_legend(title=""))+ ggtitle("N Stage")
+
+plotby6thStage <- ggplot(breast_cancer_data, aes(X6th.Stage))+geom_bar(color="black", fill="darkblue", alpha=0.4) +labs(x="6th Stage", y="Frequency")+ guides(fill=guide_legend(title=""))+ ggtitle("6th Stage")
+
+plotbyDifferentiate <- ggplot(breast_cancer_data, aes(differentiate))+geom_bar(color="black", fill="darkblue", alpha=0.4) +labs(x="Differentiate", y="Frequency")+ guides(fill=guide_legend(title=""))+ ggtitle("Differentiate")
+
+plotbyGrade <- ggplot(breast_cancer_data, aes(Grade))+geom_bar(color="black", fill="darkblue", alpha=0.4) +labs(x="Grade", y="Frequency")+ guides(fill=guide_legend(title=""))+ ggtitle("Grade")
+
+plotbyAStage <- ggplot(breast_cancer_data, aes(A.Stage))+geom_bar(color="black", fill="darkblue", alpha=0.4) +labs(x="A Stage", y="Frequency")+ guides(fill=guide_legend(title=""))+ ggtitle("A Stage")
+
+plotbyEstrogenStatus <- ggplot(breast_cancer_data, aes(Estrogen.Status))+geom_bar(color="black", fill="darkblue", alpha=0.4) +labs(x="Estrogen Status", y="Frequency")+ guides(fill=guide_legend(title=""))+ ggtitle("Estrogen Status")
+
+plotbyProgesteroneStatus <- ggplot(breast_cancer_data, aes(Progesterone.Status))+geom_bar(color="black", fill="darkblue", alpha=0.4) +labs(x="Progesterone Status", y="Frequency")+ guides(fill=guide_legend(title=""))+ ggtitle("Progesterone Status")
+
+plotbyStatus <- ggplot(breast_cancer_data, aes(Status))+geom_bar(color="black", fill="darkblue", alpha=0.4) +labs(x="Status", y="Frequency")+ guides(fill=guide_legend(title=""))+ ggtitle("Status")
+
+
+grid.arrange(plotbyRace, plotbyMaritalStatus, plotbyTStage, plotbyNStage, plotby6thStage, plotbyDifferentiate, plotbyGrade, plotbyAStage, plotbyEstrogenStatus, plotbyProgesteroneStatus, plotbyStatus, ncol=4)
+```
+
+
+Creem la matriu de correlació:
+
+```{r}
+# Seleccionem només les variables numèriques del nostre dataset
+data_numeric <- breast_cancer_data[, sapply(breast_cancer_data, is.numeric)]
+data_numeric <- scale(data_numeric)
+
+# Generem la matriu de correlacions
+matriu_cor <- cor(data_numeric)
+
+# Mostrem la matriu
+print(matriu_cor)
+```
+
+```{r}
+library(corrplot)
+```
+
+
+```{r}
+# Visualitzem la matriu de correlació
+corrplot(matriu_cor, method = "circle", addCoef.col = TRUE)
+```
+
+
+
+
+Interpetació de les relacions més significatives:
+
+- Tumor.Size vs. Reginol.Node.Positive: correlació positiva moderada (0.242). Indica que els tumors més grans tendeixen a tenir un nombre més alt de nodes regionals positius, suggerint una possible relació entre la mida del tumor i la probabilitat de metàstasi als ganglis regionals.
+- Regional.Node.Examined vs. Reginol.Node.Positive: correlació positiva moderada (0.412). Indica que un nombre més gran de ganglis regionals examinats està relacionat amb un nombre més alt de nodes regionals positius. Aquesta relació suggereix que la detecció de més ganglis pot conduir a una identificació més precisa de metàstasi als ganglis regionals.
+- Reginol.Node.Positive vs. Survival.Months: correlació negativa moderada (-0.135). Indica que un nombre més alt de nodes regionals positius està associat amb una menor supervivència de les pacients. Aquesta correlació suggereix que la presència de metàstasi als ganglis regionals pot ser un predictor de pitjor pronòstic en termes de supervivència.
+
+La resta de variables no mostren una correlació significativa.
+
+
+Amb aquesta informació, treurem un subconjunt que inclou només les variables que ens interessen:
+
+```{r}
+data <- subset(breast_cancer_data, select = c(Age, Tumor.Size, Regional.Node.Examined, Reginol.Node.Positive, Survival.Months, Status, Grade))
+```
+
+Mirem els outliers
+
+```{r}
+# Creem els boxplots com a la solució de la PAC3
+
+par(mfrow=c(2,2))
+
+boxplot(data$Age, main = "Edat de les pacients")
+boxplot(data$Tumor.Size, main = "Mida del tumor")
+boxplot(data$Regional.Node.Examined, main = "Ganglis examinats")
+boxplot(data$Reginol.Node.Positive, main = "Ganglis examinats positius")
+boxplot(data$Survival.Months, main = "Mesos de supervivència")
+```
+
+Veiem que a les variables d'edat i mesos de supervivència no hi ha presència d'outliers o aquesta és molt petita. En canvi, a les de mida del tumor i ganglis examinats positius sí que ens trobem amb una quantitat important. Com que no sabem quin motiu podria haver-hi darrere d'això i si ens podria donar informació important, no realitzem cap acció.
+
+Ara realitzarem un anàlisi de components principals (PCA) per veure els components que millor expliquen la variabilitat de les nostres dades.
+
+```{r}
+# Generem un PCA de les dades
+resultat_pca <- prcomp(data_numeric, scale. = TRUE)
+
+# Mostrem el resum del PCA
+summary(resultat_pca)
+```
+
+```{r}
+# Visualitzem els components principals
+plot(resultat_pca, type = "l")
+```
+
+L'anàlisi dels components principals ens indica que la major part de la variabilitat de les dades s'acumula als primers dos components (51.85%).
+
+******
+# Enunciat
+******
+
+Com a continuació de l'estudi iniciat a la Pràctica 1, procedim a **aplicar models analítics, tant no supervisats com supervisats**, sobre el joc de dades seleccionat i preparat. En aquesta **Pràctica 2 haureu de carregar les dades prèviament preparades a la Pràctica 1**.
+
+
+**Punt comú per a tots els exercicis**
+
+En tots els apartats dels exercicis d'aquesta pràctica es demana a l'estudiant, a més d'aplicar els diferents mètodes i d'analitzar correctament el problema, **detallar de manera exhaustiva** ressaltant el perquè i com s'ha realitzat, incloent-hi elements visuals, explicant els resultats i realitzant les comparatives oportunes amb les seves conclusions.
+
+Per a tota la pràctica és necessari documentar cada apartat de l'exercici pràctic que s'ha fet, el perquè s'ha fet i com s'ha fet. Així mateix, totes les decisions i conclusions hauran de ser presentades de forma raonada i clara, **contextualitzant els resultats**, és a dir, especificant tots i cadascun dels passos que s'hagin dut a terme per resoldre'ls.
+
+
+D'aquesta manera es demana a l'estudiant que completi els passos següents amb el job de dades preparat a la Practica 1:
+
+**Models no supervisats**
+
+1. Aplicar un model **no supervisat** basat en el concepte de distància, sobre el joc de dades.
+
+2. Aplicar de nou el model anterior, però usant una **mètrica de distància diferent a la distància euclidiana** i comparar-ne els resultats amb els mètodes anteriors.
+
+3. Utilitzar els algorismes **DBSCAN i OPTICS**, provant amb diferents valors del paràmetre `eps` i `minPts`, i es comparen els resultats amb els mètodes anteriors.
+
+**Models supervisats**
+
+4. Seleccionar una mostra d'entrenament i una de test utilitzant les proporcions que es considerin més adequades en funció de la disponibilitat de dades. Justificar aquesta selecció.
+
+5. Aplicar un model de generació de regles a partir d' **arbres de decisió** ajustant les diferents opcions de creació (mida mínima dels nodes, criteris de divisió, ...). Obtenir l'arbre sense i amb opcions de poda. Obtenir la matriu de confusió. Finalment, comparar-ne els resultats.
+
+6. Aplicar un **model supervisat** diferent del del punt 5.. S'ha de triar entre els que s'han vist al material docent de l'assignatura. Comparar el resultat amb el model generat anteriorment.
+
+7. Identificar eventuals **limitacions** del dataset seleccionat i **analitzar els riscos** per al cas d'ús del model per a classificar una nova dada.
+
+**NOTA IMPORTANT:** *Recordeu que si les variables a la vostra base de dades tenen unitats de mesura molt diferents és recomanable transformar les variables per evitar l'efecte escala a causa de les diferents unitats de mesura.*
+
+******
+# Recursos de programació
+******
+* Incloem en aquest apartat una llista de recursos de programació per a mineria de dades on podreu trobar exemples, idees i inspiració:
+ 
+  + [Espai de recursos UOC per a ciència de dades](http://datascience.recursos.uoc.edu/es/)
+  + [Cercador de codi R](https://rseek.org/)
+  + [Col·lecció de cheatsheets en R](https://rstudio.com/resources/cheatsheets/)
+  
+******
+# Format i data de lliurament
+******
+
+El format de lliurament és: l'output generat en format **.html** amb nom **username_estudiant-PRA2**.
+
+La data límit de lliurament és el 19/06/2024.
+
+
+******
+# RESPOSTES
+******
+
+## Exercici 1
+
+### Es genera un model no supervisat.
+
+```{r}
+# Carreguem llibreries
+library(tidyverse)
+library(cluster)
+
+# Comencem aplicant el mètode del colze per veure el número de k óptim. El codi està basat en el de l'exemple de la PAC2
+wss <- numeric(15)
+
+for (k in 1:10) {
+  set.seed(123)
+  model <- kmeans(data_numeric, centers = k, nstart = 25)
+  wss[k] <- model$tot.withinss
+}
+
+plot(1:15, wss, type = "b", xlab = "Clústers", ylab = "Suma de quadrats",
+     main = "Mètode del colze")
+```
+
+Veient el gràfic, considerem que el només òptim de clústers estaria entre 3 i 4, que és quan sembla que la corba comença a aplanar-se més.
+
+### S'analitzen, mostren i comenten les mesures de qualitat del model generat.
+### Es comenten les conclusions.
+
+```{r}
+# Apliquem kmeans amb 3 clústers
+set.seed(123)
+kmeans3 <- kmeans(data_numeric,  centers = 3, nstart = 50)
+
+# Avaluem amb silhouette
+silhouette_kmeans3 <- silhouette(kmeans3$cluster, dist(data_numeric))
+plot(silhouette_kmeans3, col = as.factor(kmeans3$cluster), border = NA, main = "K-Means per 3 clústers")
+```
+
+```{r}
+# Fem el mateix per 4 clústers
+set.seed(123)
+kmeans4 <- kmeans(data_numeric,  centers = 4, nstart = 50)
+
+silhouette_kmeans4 <- silhouette(kmeans4$cluster, dist(data_numeric))
+plot(silhouette_kmeans4, col = as.factor(kmeans4$cluster), border = NA, main = "K-Means per 4 clústers")
+```
+
+En aquestes gràfiques podem veure que les "muntanyes" tenen uns valors similars, al voltant de 0.4, relativament alts. Això ens indicaria una bona cohesió dins del clúster. Tot i així, ens trobem alguns valors per sota de 0 en totes dues gràfiques que ens estarien indicant que no hi ha una delimitació tan clara com ens agradaria.
+
+He provat amb més clústers (fins a 8), però no he apreciat una millora significativa.
+
+La meva conclusió és els resultats obtinguts no són prou bons. Es presenten solapaments entre les observacions i no hi ha una clara delimitació entre els grups.
+
+***
+
+## Exercici 2
+
+### Es genera de nou el model no supervisat anterior, però usant una mètrica de distància diferent.
+
+### Es mostren i es comenten les mesures de qualitat del model generat.
+
+### Addicionalment es comparen els dos models no supervisats amb mètriques de distància diferents.
+
+### Es comenten les conclusions.
+
+Aplicarem la distància de Manhattan (https://www.rdocumentation.org/packages/amap/versions/0.8-19/topics/Kmeans)
+
+```{r}
+# Apliquem el mètode de Manhattan amb 3 clústers
+manhattan_distance3 <- dist(data_numeric, method = "manhattan")
+pam_model3 <- pam(manhattan_distance3, k = 3, diss = TRUE)
+
+silhouette_scores3 <- silhouette(pam_model3$clustering, manhattan_distance3)
+plot(silhouette_scores3, main = "Distància de Manhattan per 3 clústers", col = pam_model3$clustering + 1, border = NA)
+```
+
+```{r}
+# Apliquem el mètode de Manhattan amb 4 clústers
+manhattan_distance4 <- dist(data_numeric, method = "manhattan")
+pam_model4 <- pam(manhattan_distance4, k = 4, diss = TRUE)
+
+silhouette_scores4 <- silhouette(pam_model4$clustering, manhattan_distance4)
+plot(silhouette_scores4, main = "Distància de Manhattan per 4 clústers", col = pam_model4$clustering + 1, border = NA)
+```
+
+En auqest cas, ens trobem amb el mateix problema que amb la distpacia euclidiana, i amb la mateixa conclusió. Tot i així, amb la distància de Manhattan sembla que 3 clústers són una opció millor.
+
+***
+
+## Exercici 3
+
+### S'apliquen els algorismes DBSCAN i OPTICS de forma correcta.
+
+### Es proven, descriuen i interpreten els resultats amb diferents valors d'`eps` i `minPts`.
+
+### S'obté una mesura de com és de bo l'agrupament.
+
+### Es comparen els resultats obtinguts dels models anteriors i DBSCAN.
+
+### Es comenten les conclusions.
+
+```{r}
+# Carreguem les llibreries
+if (!require(dbscan)) install.packages("dbscan")
+library(dbscan)
+```
+
+Començarem amb OPTICS provant diferents combinacions de minPts.
+
+```{r}
+# Apliquem dbscan
+set.seed(23)
+res <- optics(data_numeric, minPts = 10)
+print(res)
+
+plot(res, main = "Reachability Plot")
+
+set.seed(23)
+res2 <- optics(data_numeric, minPts = 50)
+print(res2)
+
+plot(res2, main = "Reachability Plot")
+
+set.seed(23)
+res3 <- optics(data_numeric, minPts = 100)
+print(res)
+
+plot(res3, main = "Reachability Plot")
+```
+
+Amb el reachability plot veiem que quant més incrementem el valor de minPts, pitjors resultats obtenim, pel que treballarem amb el valor de 10.
+
+Veiem una altra representació del diagrama:
+
+```{r}
+plot(data_numeric[,1:2], col = "darkgreen")
+polygon(data_numeric[res$order,])
+```
+
+Amb aquest gràfic no podem diferenciar cap clúster.
+
+Continuarem aplicant DBSCAN amb diferents valors d'eps:
+
+```{r}
+res4 <- extractDBSCAN(res, eps_cl = 2)
+res4
+
+plot(res4, main="Reachabiliy Plot amb eps 2")
+
+res5 <- extractDBSCAN(res, eps_cl = 3)
+res5
+
+plot(res5, main="Reachabiliy Plot amb eps 3")
+
+res6 <- extractDBSCAN(res, eps_cl = 1.5)
+res6
+
+plot(res6, main="Reachabiliy Plot amb eps 1.5")
+
+res7 <- extractDBSCAN(res, eps_cl = 1)
+res7
+
+plot(res7, main="Reachabiliy Plot amb eps 1")
+```
+
+No s'eprecia una clara diferenciació de clústers. A mñes, quant més baix és el valor d'eps, més soroll hi ha.
+
+Provem a viasualitzar els clústers amb formes convexes:
+
+```{r}
+par(mfrow=c(1,2))
+hullplot(data_numeric, res4,main = "Convex Cluster Hulls eps_cl = 2")
+hullplot(data_numeric, res5,main = "Convex Cluster Hulls eps_cl = 3")
+hullplot(data_numeric, res6,main = "Convex Cluster Hulls eps_cl = 1.5")
+hullplot(data_numeric, res7,main = "Convex Cluster Hulls eps_cl = 1")
+```
+
+Arribats a aquest punt, les meves conclusions són:
+
+- Estic fent alguna cosa malament perquè no he pogut visualitzar una definició clara de clústers, però per molta informació que hagi buscat, no he sabut corregir-lo.
+- En comparació amb k-means, trobo que la distància euclidiana és el mètode que més s'apropa a definir uns grups diferenciats en el meu cas. Potser no ha estat l'indicat per auqests algoritmes, però el més probable és que jo hagi comés alguns errors que no permetin el seu correcte funcionament.
+
+*** 
+
+## Exercici 4
+
+### Es seleccionen les mostres d'entrenament i de prova.
+
+### justifiquen les proporcions seleccionades.
+
+Volem predir el l'estat vital de la pacient, pel que aquesta serà la nostra variable dependent.
+
+Primer desordenem les dades. Tot el codi utilitzat està basat en l'exemple de les PACs i en algunes solucions proporcionades.
+
+```{r}
+set.seed(23)
+df_random <- data_numeric[sample(nrow(data_numeric)),]
+```
+
+```{r}
+# Seleccionem la nostra variable dependent, que serà *Status*
+data$Status <- as.factor(data$Status)
+y <- data$Status
+
+# Seleccionem les altres com a dependents
+x <- df_random
+
+# Dividim les dades en entrenament i prova
+split_prop <- 3 
+indexes = sample(1:nrow(df_random), size=floor(((split_prop-1)/split_prop)*nrow(df_random)))
+trainX <- x[indexes,]
+trainy <- y[indexes]
+testX <- x[-indexes,]
+testy <- y[-indexes]
+
+# Comprovem la proporció de les dades en els conjunts d'entrenament i prova
+prop.table(table(trainy))
+prop.table(table(testy))
+
+```
+
+Veiem que la proporció és equilibrada (és la que es recomana utilitzar normalment) així procedim a crear el model i les regles.
+
+*** 
+
+## Exercici 5
+
+### Es generen regles i es comenten i interpreten les més significatives.
+
+### S'extreuen les regles del model en format text i gràfic.
+
+### Addicionalment, es genera la matriu de confusió per a mesurar la capacitat predictiva de l'algoritme, tenint en compte les diferents mètriques associades a aquesta matriu (precisió, sensibilitat, especificitat...)..
+
+### Es comparen i interpreten els resultats (sense i amb opcions de poda), explicant els avantatges i els inconvenients del model generat respecte a un altre mètode de construcció.
+
+### S'avalua la taxa d'error de l'arbre generat, l'eficiència a la classificació (a les mostres d'entrenament i test) i la comprensibilitat del resultat.
+
+### Es comenten les conclusions.
+
+
+```{r}
+library(C50)
+model <- C5.0(trainX, trainy, rules = TRUE)
+summary(model)
+```
+
+El model no ha generat cap regla. Buscant informació, he trobat que això pot indicar que el model no veu cap patró rellevant o que faltaria informació. La conclusió que trec d'això és que el model es podria millorar o qwue potser les dades que he escollit tornen a ser no adequades. A més, no s'ha generat el gràfic.
+
+En quant a errors de classificació, veiem que el model ha comès 423 erros de 2682 casos. Això és un 15.8% d'error.
+
+
+```{r}
+# Carreguem les llibreries
+if (!require(caret)) install.packages("caret")
+if (!require(ggplot2)) install.packages("ggplot2")
+library(caret)
+library(ggplot2)
+library(caret)
+```
+
+
+```{r}
+# Generem la matriu de consfusió
+predictions <- predict( model, testX, type="class" )
+conf_matrix <- confusionMatrix(predictions, testy)
+confusion_df <- as.data.frame(conf_matrix$table)
+
+
+conf_mat<-table(testy, predictions)
+
+confusionMatrix(conf_mat)
+```
+
+Conclusions de la matriu de confusió:
+
+- Veritables Positius (TP): 1149 casos "Alive" han estat correctament classificats com a "Alive".
+- Falsos Negatius (FN): 193 casos "Dead" han estat incorrectament classificats com a "Alive".
+- Falsos Positius (FP): 0 casos, no hi ha casos "Alive" que s'hagin classificat incorrectament com a "Dead".
+- Veritables Negatius (TN): 0 casos, no hi ha casos "Dead" que s'hagin classificat correctament (això és perquè el model no ha predit cap cas com a "Dead").
+
+```{r}
+ggplot(data = confusion_df, aes(x = Reference, y = Prediction, fill = Freq)) +
+  geom_tile() + 
+  geom_text(aes(label = Freq), vjust = 1.5, color = "white") +
+  scale_fill_gradient(low = "green", high = "darkgreen") +
+  labs(title = "Matriu de Confusió", x = "Etiqueta Real", y = "Predicció") +
+  theme_minimal()
+```
+
+Tots els casos han estat classificats com *Alive*.
+
+***
+
+## Exercici 7
+
+### S'identifica quines possibles limitacions tenen les dades que has seleccionat per obtenir conclusions amb els models (supervisat i no supervisat)
+
+### S'identifiquen possibles riscos de fer servir el model (mínim 300 paraules).
+
+Un limitació que crec que ha pogut afectar bastant és el fet que hi ha una quantitat molt superior de mostres a la classe *Alive* respecte a la de *Dead*.
+També potser la quantitat d'observacions en general era massa patita pel que jo vcolia predir.
+
+En general, trobo que he comès molts errors al llarg del projecte que no he sabut o bé veure o bé solucionar i tot això ha derivat en models de classificació incorrectes i que no es poden utilitzar. Tot i així, aquest treball m'ha ajudat a veure els aspectes que he de millorar i en els que m'he d'esforçar molt més per poder aprendre dels meus errors.
+***

@@ -1,0 +1,425 @@
+---
+title: 'Activitat 4: Anàlisi de la Variància i Repàs del Curs'
+author: "Maggi Dicheva Baeva"
+date: "2025-01-08"
+output:
+  html_document:
+    toc: true
+    number_sections: true
+  word_document:
+    toc: true
+  pdf_document:
+    toc: true
+header-includes: \usepackage{dcolumn}
+lang: ca
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+options(repos = c(CRAN = "https://cloud.r-project.org"))
+```
+
+# Preprocessat
+## Variable *Region*
+
+```{r}
+# Carreguem el fitxer
+
+data <- read.csv('Life-Expectancy-Data-Updated.csv')
+head(data)
+
+# Consultem el tipus de dades
+
+str(data)
+```
+
+Trobo que seria més net treballar amb les variables *Alcohol_consumption* i *Adult_mortality* amb dos decimals en lloc de quatre. Realitzem la transformació.
+
+```{r}
+library(dplyr)
+
+data <- data %>%
+  mutate(
+    Adult_mortality = round(Adult_mortality, 2),
+    Alcohol_consumption = round(Alcohol_consumption, 2)
+  )
+```
+
+```{r}
+# Canviem les categories de la variable *País*
+
+data <- data %>%
+  mutate(
+    Region = case_when(
+      Region %in% c("European Union", "Rest of Europe") ~ "Europe",
+      Region %in% c("South America", "Central America and Caribbean") ~ "South-Central America",
+      TRUE ~ Region
+    )
+  )
+head(data)
+```
+
+## Variable *Life-Expectancy*
+
+Per detectar possibles valors atípics, primer generem un boxplot amb la variable Life-Expectancy
+
+```{r}
+boxplot(data$Life_expectancy, main = "Life-Expectancy", col = "purple")
+```
+
+A partir de la visualització, observem que hi ha valors atípics en edats més baixes, és a dir, que aparentment hi ha països en les que l'esperança de vida és atípicament més baixa.
+
+```{r}
+# Extreiem els valors atípics de la variable amb el rang interquartílic (IQR)
+Q1 <- quantile(data$Life_expectancy, 0.25)
+Q3 <- quantile(data$Life_expectancy, 0.75)
+IQR <- Q3 - Q1
+lower_limit <- Q1 - 1.5 * IQR
+upper_limit <- Q3 + 1.5 * IQR
+
+life_expectancy_outliers <- data %>%
+  filter(Life_expectancy < lower_limit | Life_expectancy > upper_limit) %>%
+  select(Country, Region, Year, Life_expectancy) %>%
+  arrange(Country, Year)
+
+# Mostrem la taula de valors atípics amb les variables demanades
+print(life_expectancy_outliers)
+```
+
+En un principi, a mi aquests valors em semblen atípics, però no erronis. Veig possible que en alguns països l'esperança de vida fos tan baixa com s'indica per diferents factors ambientals. A més, són bastant consistents al llarg dels anys, no varien molt. Per tant, no veig necessari substituir-los per valors perduts (NA).
+
+## Valors perduts
+
+Comprovem si hi ha algun valor perdut en el dataframe
+
+```{r}
+sum(is.na(data))
+```
+
+No és el nostre cas, així que no prenem cap mesura.
+
+## Subconjunt de dades. Anàlisi de l'any 2015
+
+Creem el subconjunt que farem servir d'aquí en endavant
+
+```{r}
+data_2015 <- data %>%
+  filter(Year == 2015)
+head(data_2015)
+```
+
+Ja ho tenim tot llest per continuar amb l'anàlisi.
+
+# Estadística descriptiva
+## Esperança de vida per regió
+
+Dibuixem els boxplots de la variable *Life-expectancy* per regions
+
+```{r}
+library(ggplot2)
+
+ggplot(data_2015, aes(x = Region, y = Life_expectancy, fill = Region)) +
+  geom_boxplot() +
+  theme_minimal() +
+  labs(title = "Distribució de l'esperança de vida per regió 2015",
+       x = "Regió",
+       y = "Esperança de vida (anys)") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+Veiem que hi ha regions que tenen alguns valors atípics (Àfrica, Orient Pròxim, Oceania i América).
+
+## Correlació
+
+Calculem la matriu de correlació lineal entre les variables quantitatives del subconjunt.
+
+```{r}
+numeric_vars <- data %>%
+  select(Infant_deaths, Under_five_deaths, Adult_mortality, Alcohol_consumption,
+         GDP_per_capita, Population_mln, Thinness_ten_nineteen_years, Thinness_five_nine_years,
+         Schooling, Life_expectancy, Hepatitis_B, Measles, Polio, Diphtheria)
+
+# Calculem la matriu de correlació
+cor_matrix <- cor(numeric_vars)
+round_cor_matrix <- round(cor_matrix, 3)
+
+print(round_cor_matrix)
+```
+
+```{r}
+# Mostrem la gràfica de la matriu de correlació
+library(corrplot)
+
+corrplot(round_cor_matrix, method = "color", type = "upper", order = "hclust",
+         tl.col = "black", tl.srt = 45,
+         addCoef.col = "black",
+         number.cex = 0.6)
+```
+
+A partir de la matriu i la gràfica de correlació, podem extreure:
+
+- Les variables *Infant_deaths*, *Under_five_deaths* i *Adult_mortality* mostren una correlació molt negativa amb l'esperança de vida (-0.920, -0.920 i -0.945, respectivament), indicant que les altes taxes de mortalitat infantil, infantil per sota dels 5 anys i adulta estan fortament associades amb una menor esperança de vida.
+
+- La variable *GDP_per_capita* té una correlació positiva notable (0.583) amb l'esperança de vida, reflectint que un major desenvolupament econòmic pot contribuir a una millor salut i una vida més llarga.
+
+- La variable *Schooling* presenta una correlació positiva significativa (0.732) amb l'esperança de vida, suggerint que majors nivells d'educació estan associats amb una esperança de vida més alta.
+
+- Les variables *Polio* i *Diphtheria* mostren una correlació positiva significativa (0.641 i 0.628, respectivament). Això indica que una major cobertura de vacunació contra la polio i la diftèria està associada amb una millor esperança de vida.
+
+## Coordenades paral·leles
+
+Primer, calculem  la mirjana de cadascuna de les variables objectiu.
+
+```{r}
+data_means <- data_2015 %>%
+  group_by(Region) %>%
+  summarise(
+    Thinness_five_nine_years = mean(Thinness_five_nine_years),
+    Schooling = mean(Schooling),
+    Alcohol_consumption = mean(Alcohol_consumption),
+    Life_expectancy = mean(Life_expectancy)
+  )
+
+print(data_means)
+```
+
+```{r}
+# Info extreta de https://r-graph-gallery.com/parallel-plot-ggally.html
+install.packages("GGally")
+library(GGally)
+
+ggparcoord(data_means,
+           columns = 1:4,
+           groupColumn = 5,
+           scale = "globalminmax",
+           title = "Mitjanes de variables per regió") +
+  theme_minimal() +
+  labs(x = "",
+       y = "")
+```
+
+# Estadística inferencial
+
+**Considerant un nivell de confiança del 99%:**
+
+## Hipòtesi de contrast
+
+Per aquesta anàlisi, definirem les hipòtesis nul·la i alternativa de la següent manera:
+
+- **Hipòtesi Nul·la (H0)**: L'esperança de vida mitjana a l'Àfrica és igual o superior a la mitjana de la resta dels països. H0: μ Àfrica ≥ μ Resta
+- **Hipòtesi Alternativa (H1)**: L'esperança de vida mitjana a l'Àfrica és inferior a la mitjana de la resta dels països. H1: μ Àfrica < μ Resta
+
+## Test
+
+El test més adequat per aquesta comparació, considerant que estem comparant les mitjanes de dues poblacions independents, és el test t per a dues mostres independents.
+
+## Contrast
+
+```{r}
+library(dplyr)
+life_expectancy_africa <- data_2015 %>% 
+  filter(Region == "Africa") %>% 
+  pull(Life_expectancy)
+
+life_expectancy_rest <- data_2015 %>% 
+  filter(Region != "Africa") %>% 
+  pull(Life_expectancy)
+```
+
+Realitzem un test t de Welch (que no assumeix variàncies iguals) per comparar les mitjanes de l'esperança de vida.
+
+```{r}
+welch_test <- t.test(life_expectancy_africa, life_expectancy_rest, alternative = "less", conf.level = 0.99)
+print(welch_test)
+```
+
+## Interpretació
+
+El test t de Welch mostra una diferència estadísticament significativa en l'esperança de vida entre Àfrica i la resta del món, amb un valor p pràcticament nul (< 2.2e-16) i un estadístic de contrast molt negatiu (t = -12.602). Per tant, rebutjem la hipòtesi nul·la.
+
+Això indica que l'esperança de vida a Àfrica és significativament inferior a la de la resta del món, amb una diferència mitjana estimada de 12.58 anys (75.05 - 62.47).
+
+# Model de regressió lineal
+## Model de regressió lineal múltiple
+
+Abans de fer el model, dividirem les dades en entrewnament i test.
+
+```{r}
+library(caret)
+
+set.seed(123)
+index <- createDataPartition(data_2015$Life_expectancy, p = 0.70, list = FALSE)
+train_data <- data_2015[index, ]
+test_data <- data_2015[-index, ]
+```
+
+
+```{r}
+# Les variables *Year* i *Economy_status_Developing* generaven problemes de multcol·linealitat, impedint el càlcul VIF. Per això, també s'han retirat
+linear_model <- lm(Life_expectancy ~ . - Country - Year - Economy_status_Developing, data = train_data)
+summary(linear_model)
+
+```
+
+Aquest model ens indica:
+
+- En aquest cas, la nostra regió de referència és Àfrica, que és la que falta. En funció d'aquesta regió, veiem que l'única que mostra una diferència estadísticament significativa és la d'Amèrica Central i Sud. L'esperança de vida d'aquesta regió és de 1.82 anys superior respecte a l'Àfrica, amb un p-valor < 0.0001. La resta de regions no mostren diferències significatives.
+
+(No estic segura d'haver fet una interpretació adequada. Em sorprén que hi hagi una diferència estadísticament significativa amb només una regió)
+
+D'altra banda, les variables *Adult_mortality* (p < 0.0001), *Under_five_deaths* (p < 0.05), *BMI* (p < 0.05), *Incidents_HIV* (p < 0.05), *GDP_per_capita* (p < 0.01) i *Economy_status_Developed* (p < 0.0001) mostren coeficients significatius amb valors p baixos, indicant que tenen un impacte estadísticament significatiu en l'esperança de vida. La resta de variables no mostren una relació significativa.
+
+En relació a la qualitat de l'adjust, l'R-squared ens indica que el nostre model explica el 97.59% de la variància, recolzat pel R-squared adjustat amb un valor molt semblant. L'estadístic F té un p-valor < 0.0001, indicant que el model és estadísticament significatiu i que les variables són predictors útils de l'esperança de vida.
+
+## Anàlisi de multicol·linealitat i elecció del model final
+
+```{r}
+library(car)
+
+# El càlcul del VIF em donava l'error següent: there are aliased coefficients in the model. Per això, 
+vif_values <- vif(linear_model)
+print(vif_values)
+```
+
+Els valors tan elevats de les variables *Infant_deaths* i *Under_five_death* ens indiquen un problema de multicol·linealitat. Les variables en sí són redundants, per tant es decideix eliminar-les del model. La resta de variables mostren una correlació moderada, sent *Adult_mortality* (que també sembla redundant), *Thinness_ten_nineteen_years* i *Thinness_five_nine_years* les que tenen un valor més elevat. De moment, eliminem la primera.
+
+Tot i així, el valor R-squared ens ha indicat abans que el model té una capacitat predictiva molt alta.
+
+
+# Regressió logística
+## Model predictiu
+
+Comencem creant la variable dicotòmica
+
+```{r}
+data_2015$High_adult_mortality <- ifelse(data_2015$Adult_mortality > median(data_2015$Adult_mortality), 1, 0)
+```
+
+Ara, ajustarem un model predictiu basat en la regressió logística amb la variable *High_adult_mortality* creada com a dependent de les altres variables esmenatdes.
+
+```{r}
+library(stats)
+logistic_model <- glm(High_adult_mortality ~ Hepatitis_B + Measles + BMI + Polio + Diphtheria, 
+                      data = data_2015, family = binomial())
+summary(logistic_model)
+```
+
+El model de regressió logística suggereix:
+
+- *Hepatitis_B* (coeficient = 0.27621, p = 0.02153): positiu i significatiu, suggerint que un augment en la cobertura de vacunació contra l'Hepatitis B està associat amb un lleuger augment en la probabilitat de mortalitat adulta alta.
+
+- *Measles* (coeficient = -0.05801, p = 0.00246): negatiu i significatiu, indicant que un augment en la cobertura de vacunació contra el xarampió està associat amb una reducció en la probabilitat de mortalitat adulta alta. Aquesta variable actua com un factor de protecció.
+
+- *BMI* (coeficient = -0.30874, p = 0.00554): negatiu i significatiu, mostrant que un major índex de massa corporal està associat amb una menor probabilitat de mortalitat adulta alta. Aquest resultat podria indicar ser una variable protectora.
+
+- *Polio* (coeficient = -0.12280, p = 0.03619): negatiu i significatiu, suggerint que una millor cobertura de vacunació contra la polio està associada amb una menor probabilitat de mortalitat adulta alta, funcionant com un factor de protecció.
+
+- *Diphtheria* (coeficient = -0.22305, p = 0.08365): negatiu però no significatiu (p > 0.05). Suggereix una tendència on una millor cobertura de vacunació contra la diftèria podria reduir la probabilitat de mortalitat adulta alta.
+
+En quant a la qualitat del model, la deviance residual ha disminuït de 248.14 a 149.03 després de l'ajust del model, indicant una millora significativa en l'ajust del model respecte al model nul. En relació a l'AIC (161.03), si en comparació al d'un model alternatiu fos més baix, suggeriria un millor ajust.
+
+Per tenir una milor idea de quines variables són de protecció i quines de risc, explorem l'Odds Ràtio.
+
+```{r}
+odds_ratios <- exp(coef(logistic_model))
+
+conf_int <- exp(confint(logistic_model))
+
+odds_ratio_table <- cbind(OddsRatio = odds_ratios, ConfIntLow = conf_int[,1], ConfIntHigh = conf_int[,2])
+print(odds_ratio_table)
+
+```
+
+Els resultats del model de regressió logística indiquen que lavacunació contra l'hepatitis B (1.32) actua com a factor de risc lleuger, incrementant les probabilitats d'alta mortalitat adulta. En canvi, les vacunacions contra el xarampió, la polio i la diftèria, juntament amb un major índex de massa corporal (BMI), serveixen com factors de protecció, reduint les probabilitats de mortalitat adulta alta. Aquest últim factor molt probablement fa referència a un índex de massa corporal relacionat amb una bona alimentació.
+
+## Matriu de confusió
+
+Calculem la matriu de confusió per analitzar la precisió del model
+
+```{r}
+predicted_probabilities <- predict(logistic_model, type = "response")
+
+predicted_classes <- ifelse(predicted_probabilities >= 0.5, 1, 0)
+
+conf_matrix <- table(Predicted = predicted_classes, Actual = data_2015$High_adult_mortality)
+
+confusionMatrix(conf_matrix)
+```
+
+La matriu de confusió ens indica que el model té una precisió del 78.21%, undicant una capacitat modaradament bona de predir correctament l'esperança de vida. La sensibilitat és de 83.3·%, és a dir, quie identifica correctament els 83.33% dels casos reals com a tals. L'especificitat indica que el model classifica correctament el 75.76% de casos de reals de baixa esperança de vida. En resum, aquests vsalors en indiquen que le model té una bona capacitat per classificar la variable objectiu.
+
+# ANOVA unifactorial
+## Visualització gràfica
+
+```{r}
+if (!requireNamespace("ggpubr", quietly = TRUE)) {
+  install.packages("ggpubr")
+}
+library(ggpubr)
+
+ggline(data_2015, x = "Region", y = "Life_expectancy", 
+       add = "mean_se",                   
+       color = "Region",
+       palette = "jco") +
+  theme_minimal()
+```
+
+## Hipòtesi nul·la i alternativa
+
+Les hipòtesis per aquest ANOVA són:
+
+Hipòtesi nul·la (H0): No hi ha diferències significatives en l'esperança de vida entre les diferents regions.
+Hipòtesi alternativa (H1): Hi ha almenys una regió que té una esperança de vida significativament diferent de les altres.
+
+## Model
+
+```{r}
+anova_model <- aov(Life_expectancy ~ Region, data = data_2015)
+
+summary(anova_model)
+
+```
+
+L'ANOVA mostra que hi ha diferències estadísticament significatives en l'esperança de vida entre les regions (F value = 45.96, p-value < 2e-16). Aquest resultat indica que la regió té un impacte considerable en l'esperança de vida, rebutjant així la hipòtesi nul·la que afirma que no existeixen diferències significatives entre regions.
+
+# Comparacions múltiples
+
+```{r}
+library(stats)
+
+
+comparison_results <- pairwise.t.test(data_2015$Life_expectancy, data_2015$Region,
+                                      p.adjust.method = "bonferroni")
+
+print(comparison_results)
+```
+
+Els resultats del test de comparació múltiple amb correcció de Bonferroni mostren on hi ha diferències estadísticament significatives en l'esperança de vida entre les regions. En resum:
+
+- Africa vs. altres regions: L'esperança de vida a l'Àfrica és significativament diferent de la majoria de les altres regions (p < 2e-16 amb Europa, p < 2e-16 amb Sud-Central Amèrica, etc.), indicant una major discrepància en l'esperança de vida.
+- Europa vs. altres regions: Europa mostra diferències significatives respecte a Àfrica i Oceania, però no mostra diferències estadísticament significatives amb l'Àsia, Orient Mitjà, Nord-Amèrica, i Sud-Central Amèrica, suggerint nivells similars d'esperança de vida amb aquestes regions.
+- Àsia i Oceania: L'Àsia i Oceania no mostren diferències significatives entre elles, però sí amb altres regions com Àfrica i Europa.
+
+# ANOVA multifactorial
+
+```{r}
+grouped_data <- data_2015 %>%
+  group_by(Region, Economy_status_Developed) %>%
+  summarise(Mean_Life_Expectancy = mean(Life_expectancy, na.rm = TRUE))
+
+print(grouped_data)
+```
+
+## Càlcul del model
+
+
+```{r}
+anova_model <- aov(Life_expectancy ~ Region * Economy_status_Developed, data = data_2015)
+
+summary(anova_model)
+```
+
+L'ANOVA mostra que tant la regió com l'estatus de desenvolupament tenen efectes significatius en l'esperança de vida, amb p-valors molt baixos indicant fortes diferències. No obstant això, l'interacció entre aquests dos factors no és estadísticament significativa, suggerint que l'impacte de l'estatus de desenvolupament sobre l'esperança de vida no varia substancialment entre regions
+
+
+

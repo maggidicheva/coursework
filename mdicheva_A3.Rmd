@@ -1,0 +1,141 @@
+---
+title: "A3 - Models predictius"
+author: "Maggi Dicheva Baeva"
+date: "2024-12-15"
+output:
+  html_document:
+    toc: true
+    number_sections: true
+  word_document:
+    toc: true
+  pdf_document:
+    toc: true
+header-includes: \usepackage{dcolumn}
+lang: ca
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# Regressió lineal
+## Estudi de correlació lineal i gràfic de dispersió
+### Correlació lineal
+
+```{r}
+# Carreguem les dades "Astronomy.csv"
+
+data <- read.csv("C:/Users/diche/OneDrive/Escritorio/Anàlisi estadística/A3/Astronomy.csv")
+head(data)
+```
+
+```{r}
+# Selecionem només les dades quantitatives
+quant_data <- data[, c("Temperatura", "Luminosidad", "Radio", "Magnitud")]
+# Calculem i mostrem la matriu
+cor_matrix <- cor(quant_data)
+print(cor_matrix)
+```
+
+```{r}
+library(corrplot)
+corrplot(cor_matrix, method = "color", type = "upper", order = "hclust",
+         addCoef.col = "black",
+         tl.col = "black", tl.srt = 45,
+         cl.pos = "b", cl.cex = 0.75,
+         number.cex = 0.7)
+
+```
+
+De la matriu podem extreure:
+
+- Temperatura i Lluminositat (0.39): hi ha una correlació positiva moderada entre la temperatura i la lluminositat d'una estrella, el que significa que a major temperatura, tendeix a haver-hi major lluminositat.
+
+- Lluminositat i Radio (0.53): aquesta és una correlació positiva forta, indicant que les estrelles amb major radi també tendeixen a ser més lluminoses.
+
+- Lluminositat i Magnitud (-0.69): aquesta correlació negativa forta suggereix que a major lluminositat, menor és la magnitud absoluta.
+
+- Radio i Magnitud (-0.61): hi ha una correlació negativa forta, indicant que les estrelles de major radi tendeixen a tenir una magnitud menor.
+
+### Diagrama HR (Hertzsprung-Russell)
+
+```{r}
+library(ggplot2)
+
+ggplot(data, aes(x = Temperatura, y = Magnitud, color = Tipo_Cat)) +
+    geom_point(alpha = 0.5, size = 1.5) +
+    scale_x_log10() + 
+    scale_y_reverse() +
+    scale_color_brewer(palette = "Set1") +
+    labs(title = "Diagrama de Hertzsprung-Russell (HR)",
+         x = "Temperatura (K)",
+         y = "Magnitud absoluta",
+         color = "Tipus d'estrella") +
+    theme_minimal() +
+    theme(legend.position = "right")
+```
+
+A partir del gràfic generat, interpretem:
+
+- Nanes marrons (Brown Dwarf): aquestes estrelles es localitzen principalment en la part inferior esquerra del gràfic, indicant que són relativament fredes i de major magnitud.
+
+- Nanes roges (Red Dwarf): aquestes també es troben a la part inferior, però amb temperatures lleugerament més altes que les nanes marrons. Són estrelles també de major magnitud.
+
+- Nanes blanques (White Dwarf): estan disperses a la part inferior central i dreta, mostrant que, tot i que són més calentes, tenen magnituds també més altes.
+
+- Seqüència principal (Main Sequence): aquestes estrelles formen una línia clara que va des de la part superior dreta (més calentes i de menor magnitud) cap a la part inferior esquerra (més calentes i de major magnitud). Buscant informació sobre aquestes estrelles, s'ha vist que la seqüència principal és la regió del diagrama on es troben la major part de les estrelles (https://es.wikipedia.org/wiki/Secuencia_principal).
+
+- Supergegants (Supergiant): són visibles a la part superior del gràfic, magnituts més baixes i temperatures variables.
+
+- Hipergigants (Hypergiant): apareixen prop dels supergegants, però encara més a la part superior, mostrant una magnitud absoluta extremadament baixa i temperatures que varien de més baixes a més altes.
+
+## Creació de una nova variable i generació dels conjnts d'entrenament i test
+
+```{r}
+# Reassignem els valors indicats de la variable
+data$Clase_Espectral_Reassignada <- ifelse(data$Clase_Espectral %in% c("G", "K"), "K", data$Clase_Espectral)
+```
+
+```{r}
+library(caret)
+
+# Dividim les dades en entrenament i test (80-20)
+set.seed(123)
+index <- createDataPartition(data$Clase_Espectral_Reassignada, p = 0.8, list = FALSE)
+train_data <- data[index, ]
+test_data <- data[-index, ]
+```
+
+## Estimació del model de regressió lineal amb predictors quantitatius
+
+```{r}
+# Creem el model que intenti explicar la lluminositat e funció de la resta de varaiables quantitatives
+
+model <- lm(Luminosidad ~ Temperatura + Radio + Magnitud, train_data)
+summary(model)
+
+```
+
+El resultat del model ens indica:
+
+
+- Temperatura (3.53): aquesta relació és estadísticament significativa amb un p-valor de 0.00164, indicant que la temperatura té un efecte positiu sobre la lluminositat.
+
+- Radio (69.10): aquest coeficient també és estadísticament significatiu (p-valor = 0.00248), suggerint que el radi de l'estrella és un predictor fort de la seva lluminositat.
+
+- Magnitud (-8805.94): aquest coeficient té un efecte negatiu significatiu sobre la lluminositat. El p-valor molt petit (1.53e-11) reforça la forta relació inversa entre magnitud i lluminositat.
+
+Per tant, es pot afirmar que existeix una relació forta i negativa entre la magnitud i la lluminositat d'una estrella. Seria de tipus invers, és a dir, que quant més magnitud, menys lluminositat i a l'inrevés.
+
+### Comprovació de colinealitat
+
+```{r}
+library(car)
+vif(model)
+```
+
+Els tres valors són baixos, suggerint que no hi ha problemes importants de multicolinealitat. A la vista dels resultats, no exclouria cap variable del model.
+
+
+*Per pics de feina, fins aquí és el màxim que he pogut entendre i fer. De cara a la PAC4, m'organitzaré millor.*
